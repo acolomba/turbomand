@@ -1,0 +1,31 @@
+FROM	LIB:c.o
+	obj/main.o
+	obj/mand.o
+	obj/mand.ieee.o
+	obj/mand.ffp.o
+	obj/mand.int.o
+	obj/intmand.o
+	obj/menuhand.o
+	obj/menus.o
+	obj/startend.o
+	obj/iffw.o
+	obj/ilbmw.o
+	obj/packer.o
+	obj/saveiff.o
+	obj/iffr.o
+	obj/ilbmr.o
+	obj/unpacker.o
+	obj/loadiff.o
+	obj/prjmenu.o
+	obj/areamenu.o
+	obj/dspmenu.o
+	obj/intuimsgs.o
+	obj/stuff.o
+	obj/ieee2int.o
+	obj/ffpatof.o
+TO	tm
+LIB	LIB:a.lib
+	LIB:lcm.lib
+	LIB:lc.lib
+VERBOSE
+NODEBUG

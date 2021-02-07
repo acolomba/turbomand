@@ -1,0 +1,154 @@
+bhs     MACRO
+                bcc.\0  \1
+        ENDM
+
+blo     MACRO
+                bcs.\0  \1
+        ENDM
+
+push    MACRO
+                movem.l \1,-(sp)
+        ENDM
+
+pull    MACRO
+                movem.l (sp)+,\1
+        ENDM
+
+
+                xdef    _intmand
+
+                xref    _intr
+                xref    _ints
+                xref    _iters
+
+                csect   text
+
+_intmand        push    d1-d7
+
+                move.l  _iters,d3       ;iters->k
+                subq.l  #1,d3           ;???
+                move.l  _intr,d4        ;intr-> x
+                move.l  _ints,d5        ;ints-> y
+
+loop:           move.l  d4,d0           ;x
+                bsr     square          ;x*x
+                move.l  d1,d2           ;x2
+                add.l   d0,d0           ;
+                bvs.s   overflow        ;overflow?
+
+                move.l  d5,d0           ;y
+                bsr     square          ;y*y
+                add.l   d0,d0           ;
+                bvs.s   overflow        ;overflow?
+
+                move.l  d1,d0           ;y2
+                add.l   d2,d0           ;  +x2
+                bvs.s   overflow        ;overflow?
+
+                sub.l   d1,d2           ;x2-y2
+                add.l   d6,d2           ;     +p
+                bvs.s   overflow2       ;overflow?
+
+                move.l  d4,d0           ;x
+                move.l  d5,d1           ;y
+                bsr     multi           ;x*y
+                add.l   d1,d1           ;   *2
+                bvs.s   overflow2       ;overflow?
+                add.l   d7,d1           ;     +q
+                bvs.s   overflow2       ;overflow?
+
+                move.l  d1,d5           ;       ->y
+                move.l  d2,d4           ;        ->x
+
+                dbf     d3,loop         ;k--
+
+* This is more or less a kludge!
+* Testing if |z| < 2 should be last in our loop, before
+* dbf. Because it was first, low-level iterations
+* would show some sharp edges on the interior.
+* We need one more |z| < 2 here.
+* (The kludge is not removed because of speed reasons.)
+
+                move.l  d4,d0           ;x
+                bsr     square          ;x*x
+                move.l  d1,d2           ;   ->x2
+                add.l   d0,d0           ;
+                bvs.s   overflow        ;overflow?
+
+                move.l  d5,d0           ;y
+                bsr     square          ;y*y
+                add.l   d0,d0           ;
+                bvs.s   overflow        ;overflow
+                add.l   d2,d1           ;x2+y2
+                bvs.s   overflow        ;overflow?
+                moveq.l #0,d0
+                pull    d1-d7
+                rts
+
+* Thanks to our kludge, d3 has been decremented too much if
+* branched here. This would result in sharp edges on areas
+* outside the set as well. This time we have an easy fix:
+
+overflow:       addq.w  #1,d3
+overflow2:      move.l  d3,d0
+                pull    d1-d7
+                rts
+
+* Square and multi are primary operations of signed fixed-point math.
+* Addition can be done using normal add.l instruction.
+
+* This routine does not monitor overflowing.
+* Its arguments are expected to be within the range -2 .. 2.
+
+* NOTE: all registers except d1 are preserved (including d0!)
+
+* square : d0^2 -> d1
+* multi: d0*d1 -> d1
+
+square:  move.l   d0,d1
+multi:   push     d2-d5
+
+* We can only multiply with unsigned numbers.
+* So we calculate the sign of the result ahead of time.
+
+         move.l   d0,d2
+         bpl.s    1$
+         neg.l    d0       ; fix d0
+1$:
+         tst.l    d1
+         bpl.s    2$
+         neg.l    d1       ; fix d1
+         not.l    d2       ; but d2 has the sign of final result
+2$:
+         move.w   d1,d3
+         mulu     d0,d3    ; d3 = d0lo * d1lo
+         moveq    #29,d5   ; strip this much bits out of d3
+         lsr.l    d5,d3    ; (introduces rounding error of max. 1 bits)
+
+         swap     d0
+         move.w   d1,d4
+         mulu     d0,d4    ; d4 = d0h1 * d1lo
+         moveq    #13,d5   ; again some strip-tease
+         lsr.l    d5,d4    ; (and rounding errors)
+         add.l    d4,d3
+
+         swap     d1
+         move.w   d1,d4
+         mulu     d0,d4    ; d4 = d0hi * d1hi
+         lsl.l    #3,d4    ; now shift the other way up
+         add.l    d4,d3    ; if (-2)*(-2) this will overflow .. who cares?
+
+         swap     d0
+         mulu     d0,d1    ; d1 = d0lo * d1hi
+         lsr.l    d5,d1    ; shift .. d5 still has #13
+         add.l    d1,d3    ; all summed in d3
+
+         tst.l    d2
+         bpl.s    3$       ; test & fix sign of product
+         neg.l    d3
+3$:
+         move.l   d3,d1    ; result will be carried back in d1 (!)
+         pull     d2-d5
+         rts
+
+        end
